@@ -9,12 +9,34 @@ include("${CMAKE_CURRENT_LIST_DIR}/../utils/socmake_message.cmake")
 # The IP will be added to the IP_LIB, by formatting the information coming from the .core file, to add and link the IP with it different file sets.
 # Unfortunately, this function does not resolve dependencies between different .core file, so the IPs that need to be linked with.
 #
+# If the core file declares a fusesoc ``virtual`` VLNV, the created IP is named after that virtual
+# VLNV instead of the core's own ``name``, and every ``FILE_SET`` generated from this core is
+# renamed accordingly, so multiple core files (e.g. technology-specific implementations of the same
+# primitive cell) can attach their sources, each under its own ``FILE_SET``, to the same virtual IP.
+# For example::
+#
+#   name: "lowrisc:prim_generic:and2"
+#   virtual:
+#     - lowrisc:prim:and2
+#
+# generates::
+#
+#   add_ip(lowrisc::prim::and2)
+#   ip_sources(lowrisc::prim::and2 <file_type> FILE_SET LOWRISC_PRIM_GENERIC_AND2 <sources>)
+#
 # :param CORE_FILE: Path to the fusesoc core file
 # :type CORE_FILE: string
+#
+# **Keyword Arguments**
+#
+# :keyword FILE_SET: Overrides the default ``FILE_SET`` name used when the core declares a
+#   ``virtual`` VLNV (default: the core's own name, uppercased with ``:`` replaced by ``_``).
+#   Ignored if the core has no ``virtual`` entry.
+# :type FILE_SET: string
 #]]
 function(add_ip_from_fusesoc CORE_FILE)
     set(options)
-    set(oneValueArgs)
+    set(oneValueArgs FILE_SET)
     set(multiValueArgs)
 
     cmake_parse_arguments(
@@ -47,8 +69,22 @@ function(add_ip_from_fusesoc CORE_FILE)
             "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/fusesoc_to_socmake.py"
             "${CORE_FILE}"
         )
+        if(DEFINED ARG_FILE_SET)
+            list(APPEND cmd --file-set "${ARG_FILE_SET}")
+        endif()
 
-        execute_process(COMMAND ${cmd} OUTPUT_VARIABLE cmake_content)
+        execute_process(
+            COMMAND ${cmd}
+            OUTPUT_VARIABLE cmake_content
+            ERROR_VARIABLE cmake_content_error
+            RESULT_VARIABLE cmake_content_result
+        )
+        if(NOT cmake_content_result EQUAL 0)
+            socmake_message(FATAL_ERROR
+                "Failed to convert fusesoc core file ${CORE_FILE} to SoCMake:\n"
+                "${cmake_content_error}"
+            )
+        endif()
         # message("${cmake_content}")
         write_file(${output_cmake_file} "${cmake_content}")
     endif()
