@@ -13,7 +13,9 @@ on:
 
 jobs:
 
-  testing:
+  # CMake/CTest-based unit and integration tests under tests/ctests/, exercising
+  # SoCMake's CMake API (add_ip(), ip_sources(), iverilog/peakrdl flows, ...).
+  ctests:
     if: >
       github.event_name == 'push' ||
       (
@@ -36,7 +38,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: 3.9
+          python-version: 3.12
 
       - name: Install dependencies
         run: |
@@ -56,3 +58,32 @@ jobs:
             # Push / merge build -> CDash update
             cmake --build build --target check_cdash
           fi
+
+  # Plain pytest tests under tests/pytest/, covering the pure-Python logic of
+  # standalone scripts that CMake invokes via execute_process() (e.g.
+  # cmake/fusesoc/fusesoc_to_socmake.py). No CMake configure/build involved.
+  pytest:
+    if: >
+      github.event_name == 'push' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.merged != true
+      )
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: pip install pytest~=8.3 pyyaml~=6.0
+
+      - name: run tests
+        run: pytest tests/pytest
